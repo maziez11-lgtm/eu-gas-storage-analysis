@@ -1,0 +1,15 @@
+api:
+  base_url: "https://agsi.gie.eu/api"
+  timeout: 30
+  page_size: 300
+
+analysis:
+  eu_target_pct: 90.0
+  eu_target_date: "11-01"
+  injection_season_start: "04-01"
+  injection_season_end: "10-31"
+
+data:
+  default_start: "2011-01-01"
+  cache_ttl_hours: 12
+  output_format: "parquet"
