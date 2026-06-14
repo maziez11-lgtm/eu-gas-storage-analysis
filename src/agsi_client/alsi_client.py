@@ -151,7 +151,7 @@ class ALSIClient:
         df = df.sort_index()
 
         num_cols = [
-            "gasInStorage",
+            "inventory",
             "sendOut",
             "dtmi",
             "full",
@@ -165,10 +165,10 @@ class ALSIClient:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
 
         if "full" not in df.columns and {
-            "gasInStorage",
+            "inventory",
             "dtmi",
         }.issubset(df.columns):
-            df["full"] = (df["gasInStorage"] / df["dtmi"] * 100).round(2)
+            df["full"] = (df["inventory"] / df["dtmi"] * 100).round(2)
 
         return df
 
@@ -191,7 +191,7 @@ class ALSIClient:
 
         Returns
         -------
-        DataFrame with columns: gasInStorage (TWh), sendOut (GWh/day),
+        DataFrame with columns: inventory (TWh), sendOut (GWh/day),
         dtmi (capacity), full (%).
         """
         code = COUNTRY_CODES.get(country.upper(), country.lower())
@@ -218,7 +218,7 @@ class ALSIClient:
 
         Returns
         -------
-        DataFrame with aggregated gasInStorage (TWh), sendOut (GWh/day),
+        DataFrame with aggregated inventory (TWh), sendOut (GWh/day),
         dtmi (capacity TWh), full (%).
         """
         eu = countries or EU_COUNTRIES
@@ -233,12 +233,12 @@ class ALSIClient:
 
         agg_cols = [
             col
-            for col in ["gasInStorage", "sendOut", "dtmi", "injection", "withdrawal"]
+            for col in ["inventory", "sendOut", "dtmi", "injection", "withdrawal"]
             if col in frames[0].columns
         ]
         df_eu = pd.concat(frames).groupby(level=0)[agg_cols].sum()
-        if "gasInStorage" in df_eu.columns and "dtmi" in df_eu.columns:
-            df_eu["full"] = (df_eu["gasInStorage"] / df_eu["dtmi"] * 100).round(2)
+        if "inventory" in df_eu.columns and "dtmi" in df_eu.columns:
+            df_eu["full"] = (df_eu["inventory"] / df_eu["dtmi"] * 100).round(2)
         df_eu["country"] = "EU"
         df_eu.index = pd.to_datetime(df_eu.index)
         return df_eu.sort_index()
