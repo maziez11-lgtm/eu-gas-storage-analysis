@@ -5,6 +5,11 @@ import pandas as pd
 from scipy import stats
 
 def merge_storage_price(storage_df, price_df, storage_col="full", price_col="ttf_front"):
+    for _df in [storage_df, price_df]:
+        try:
+            _df.index = pd.to_datetime(_df.index).tz_localize(None)
+        except Exception:
+            pass
     return storage_df[[storage_col]].join(price_df[[price_col]], how="inner").dropna()
 
 def rolling_correlation(df, x_col, y_col, windows=[30,60,90]):
@@ -37,6 +42,11 @@ def detect_regime(df, price_col="ttf_front", spread_col=None):
 
 def storage_surprise_impact(storage_df, price_df, storage_col="gasInStorage", price_col="ttf_front", window=5):
     df = storage_df[[storage_col]].copy()
+    for _df in [df, price_df]:
+        try:
+            _df.index = pd.to_datetime(_df.index).tz_localize(None)
+        except Exception:
+            pass
     df = df.join(price_df[[price_col]], how="inner").dropna()
     df["storage_wow"] = df[storage_col].diff(7)
     df["surprise"] = df["storage_wow"]

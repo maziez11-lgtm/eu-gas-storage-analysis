@@ -82,8 +82,11 @@ def price_distribution_by_fill(
     """
     prices = ttf_df[[price_col]].copy()
     fills = storage_df[[fill_col]].copy()
-    prices.index = pd.to_datetime(prices.index).tz_localize(None)
-    fills.index = pd.to_datetime(fills.index).tz_localize(None)
+    for _df in [prices, fills, ttf_df, storage_df]:
+        try:
+            _df.index = pd.to_datetime(_df.index).tz_localize(None)
+        except Exception:
+            pass
     merged = prices.join(fills, how="inner").dropna()
 
     merged["bucket"] = pd.cut(merged[fill_col], bins=n_buckets)
