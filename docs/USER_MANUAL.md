@@ -1,719 +1,495 @@
 # EU Gas Storage Analysis — User Manual
 
-A complete guide to installing, configuring and using the analysis toolkit.
+**Version 1.0 · June 2026**
 
 ---
 
 ## Table of Contents
 
-1. [Installation & Setup](#1-installation--setup)
-2. [Data Sources](#2-data-sources)
-3. [Notebook Guide](#3-notebook-guide)
-4. [Key Concepts](#4-key-concepts)
-5. [Analysis Examples](#5-analysis-examples)
-6. [Troubleshooting](#6-troubleshooting)
+1. [Introduction](#1-introduction)
+2. [Quick Start](#2-quick-start)
+3. [API Keys](#3-api-keys)
+4. [Notebooks Reference](#4-notebooks-reference)
+5. [Key Concepts](#5-key-concepts)
+6. [Example Outputs](#6-example-outputs)
+7. [Workflows](#7-workflows)
+8. [Data Files](#8-data-files)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
-## 1. Installation & Setup
+## 1. Introduction
 
-### Clone the repository
+**EU Gas Storage Analysis** is a Python + Jupyter toolkit for tracking European natural gas storage fundamentals, analysing TTF forward curve dynamics, and generating publication-ready market intelligence reports. It pulls live data from the GIE AGSI+ and ALSI+ APIs and the Databento TTF futures feed, then surfaces the analysis through 11 linked notebooks and a ReportLab PDF report.
+
+**Who it is for:** energy traders monitoring EU injection/withdrawal pace and winter adequacy; analysts building storage-to-price regression models and spread strategies; and researchers studying seasonal gas market dynamics and LNG import trends.
+
+**What you get:**
+- **11 Jupyter notebooks** covering storage EDA, seasonal decomposition, injection pace tracking, winter adequacy scenarios, TTF forward curve analysis, calendar spread dynamics, price volatility, and LNG imports
+- **Automated PDF report** (notebook 07) — 8 sections, exportable for morning briefings
+- **Python modules** in `src/` — reusable analysis functions for volatility, spread, correlation, regime detection and adequacy modelling
+
+---
+
+## 2. Quick Start
+
+**Prerequisites:** Python 3.11+, pip, JupyterLab
 
 ```bash
-git clone https://github.com/maziez11-lgtm/eu-gas-storage-analysis.git
+# Clone
+git clone https://github.com/maziez11-lgtm/eu-gas-storage-analysis
 cd eu-gas-storage-analysis
-```
 
-### Install dependencies
-
-Python 3.11 or higher is required.
-
-```bash
+# Install dependencies (~2 min)
 pip install -r requirements.txt
-```
 
-Key packages installed:
-
-| Package | Version | Purpose |
-|---|---|---|
-| `pandas` | ≥2.0 | Data manipulation |
-| `plotly` | ≥5.18 | Interactive charts |
-| `statsmodels` | ≥0.14 | STL decomposition, regression |
-| `arch` | ≥5.3 | GARCH volatility models |
-| `hmmlearn` | ≥0.3 | Hidden Markov regime detection |
-| `scipy` | ≥1.11 | Statistical tests |
-| `scikit-learn` | ≥1.3 | Machine learning utilities |
-| `tenacity` | ≥8.2 | API retry logic |
-| `pyarrow` | ≥14.0 | Parquet file I/O |
-| `jupyterlab` | ≥4.0 | Notebook interface |
-
-### Configure API keys
-
-```bash
+# Add API keys (see Section 3)
 cp .env.example .env
-```
+# Edit .env: add AGSI_API_KEY and DATABENTO_API_KEY
 
-Edit `.env` and fill in your keys (see [Section 2](#2-data-sources) for where to get them):
-
-```env
-AGSI_API_KEY=your_agsi_key_here
-DATABENTO_API_KEY=db-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-EEX_USERNAME=your_email@example.com
-EEX_PASSWORD=your_password_here
-```
-
-> **Note:** Notebooks do **not** use `python-dotenv` at runtime. Paste keys directly into the notebook configuration cells where indicated, or set them as shell environment variables before launching JupyterLab.
-
-### Launch JupyterLab
-
-```bash
+# Launch JupyterLab
 jupyter lab
 ```
 
-Open `notebooks/01_data_ingestion.ipynb` first — it creates the parquet files that all other notebooks depend on.
+**First run:**
+
+1. Open `notebooks/01_data_ingestion.ipynb` — paste your AGSI key in the config cell, run all cells. This fetches EU storage data and writes `data/processed/eu_aggregate_full.parquet`.
+2. Open `notebooks/07_ttf_storage_analysis.ipynb` — paste your Databento key in cell 2, run all cells. This fetches the TTF forward curve and generates the PDF report.
+
+Total time from clone to first report: **~10 minutes**.
 
 ---
 
-## 2. Data Sources
+## 3. API Keys
 
-### AGSI+ (Gas Storage)
+| Service | URL | Cost | What it provides |
+|---|---|---|---|
+| **AGSI+** | [agsi.gie.eu](https://agsi.gie.eu) | Free | EU gas storage: fill rate, injection, withdrawal (TWh / GWh/day) |
+| **ALSI+** | [agsi.gie.eu](https://agsi.gie.eu) | Free (same key) | EU LNG terminal storage: fill rate, send-out (TWh / GWh/day) |
+| **Databento** | [databento.com](https://databento.com) | $125 free credits; full history ~$0.01 | TTF futures M1–M24 daily settlement prices (€/MWh) |
 
-**What it is:** The Gas Infrastructure Europe (GIE) AGSI+ platform aggregates daily storage transparency data from European gas storage operators.
+### Getting your AGSI+ key
 
-**How to get a key:**
-1. Go to [agsi.gie.eu](https://agsi.gie.eu)
-2. Register for a free account
-3. Copy your API key from the profile page
-4. The same key also works for ALSI (LNG storage)
+1. Go to [agsi.gie.eu](https://agsi.gie.eu) and register a free account
+2. Log in → profile → copy the API key
+3. The same key works for both AGSI (gas storage) and ALSI (LNG)
+4. Paste into `.env`:
 
-**What the data provides:**
-
-| Column | Unit | Description |
-|---|---|---|
-| `gasInStorage` | TWh | Working gas currently in storage |
-| `workingGasVolume` | TWh | Total storage capacity |
-| `full` | % (0–100) | Fill rate = gasInStorage / workingGasVolume × 100 |
-| `injection` | GWh/day | Gas injected into storage |
-| `withdrawal` | GWh/day | Gas withdrawn from storage |
-| `injectionCapacity` | GWh/day | Physical injection capacity |
-| `withdrawalCapacity` | GWh/day | Physical withdrawal capacity |
-
-**Unit conversion:** When passing storage volumes to analysis functions, the convention is:
-- `gasInStorage` and `workingGasVolume` are in **TWh** in the raw API
-- `injection` and `withdrawal` are in **GWh/day**
-- To convert TWh → GWh: multiply by 1000
-
-**Coverage:** EU countries + UK, Ukraine. Typical delay: 1–2 days.
-
-### Databento (TTF Forward Curve)
-
-**What it is:** Databento provides access to ICE Endex TTF Natural Gas futures settlement prices via the `NDEX.IMPACT` dataset. This is the primary source for the M1–M24 forward curve used in notebooks 07–10.
-
-**How to get a key:**
-1. Go to [databento.com/signup](https://databento.com/signup)
-2. Create an account (credit card required, but you will not be charged within free credits)
-3. You receive **$125 in free credits** — the full TTF history costs approximately **$0.01**
-4. Go to [databento.com/portal/api-keys](https://databento.com/portal/api-keys) and copy your key
-
-**What the data provides:**
-- Daily settlement prices for TTF monthly futures contracts (M1 = front month, M2 = next month, …, M24)
-- Prices in €/MWh
-- History from 2018
-- The `DatabentoTTFClient` normalises Databento's fixed-point price encoding (÷ 1e9) automatically
-
-**Fetching data (notebook 07, cell 2):**
-
-```python
-from src.agsi_client.databento_client import DatabentoTTFClient
-
-client = DatabentoTTFClient(api_key="db-your-key-here")
-
-# Estimate cost before fetching (optional)
-print(client.estimate_cost(start="2020-01-01"))
-# → {'estimated_cost': '$0.0089', 'within_free_credits': True, ...}
-
-# Fetch the full forward curve
-df = client.get_ttf_curve(start="2020-01-01", n_months=12)
-df.to_csv("data/raw/ttf_curve.csv")
+```env
+AGSI_API_KEY=your_key_here
 ```
 
-**Incremental updates:**
+### Getting your Databento key
 
-```python
-# Only fetch new rows since the last date in the CSV
-df = client.update_ttf_csv("data/raw/ttf_curve.csv", n_months=12)
+1. Go to [databento.com/signup](https://databento.com/signup) — credit card required but $125 free credits covers months of usage
+2. Portal → API Keys → copy key
+3. Paste into `.env`:
+
+```env
+DATABENTO_API_KEY=db-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-### ALSI+ (LNG Storage)
-
-**What it is:** The GIE ALSI+ platform provides LNG terminal transparency data — the LNG equivalent of AGSI+.
-
-**How to get a key:** Same key as AGSI+. Register at [agsi.gie.eu](https://agsi.gie.eu).
-
-**What the data provides:**
-
-| Column | Unit | Description |
-|---|---|---|
-| `gasInStorage` | TWh | LNG in terminal tanks |
-| `dtmi` | TWh | Declared total maximum inventory (capacity) |
-| `sendOut` | GWh/day | Gas regasified and sent out to grid |
-| `full` | % | Fill rate = gasInStorage / dtmi × 100 |
-
-**Usage (notebook 11):**
-
-```python
-from src.agsi_client.alsi_client import ALSIClient
-
-client = ALSIClient(api_key="your_agsi_key", ssl_verify=False)
-lng_df = client.get_eu_aggregate(start="2020-01-01")
-lng_df.to_parquet("data/processed/eu_lng_full.parquet")
-```
+> **Where keys are used:** Notebooks paste keys directly in the configuration cell (`API_KEY = "paste_key_here"`). There is no `dotenv` runtime dependency — set values explicitly in each notebook's config cell or export to your shell environment before launching JupyterLab.
 
 ---
 
-## 3. Notebook Guide
+## 4. Notebooks Reference
 
-### Notebook 01 — Data Ingestion
+| # | Notebook | Purpose | Prerequisites | Key outputs | Est. runtime |
+|---|---|---|---|---|---|
+| 01 | `01_data_ingestion` | Fetch EU + country gas storage from AGSI+ and cache locally | AGSI key | `eu_aggregate_full.parquet` | 2–5 min |
+| 02 | `02_eda_storage_levels` | Exploratory analysis: YoY fill rate, 5yr bands, country heatmap | NB 01 | Interactive charts | 30 s |
+| 03 | `03_seasonal_analysis` | STL decomposition, injection season summaries, YoY delta | NB 01 | STL chart, season table | 1 min |
+| 04 | `04_injection_pace_tracker` | Current injection vs 90% Nov 1 EU target — achievability check | NB 01 | Required daily rate, trajectory chart | 30 s |
+| 05 | `05_winter_adequacy` | Depletion model: 4 demand scenarios × 3 injection rates | NB 01 | Depletion curves, days-of-supply table | 30 s |
+| 06 | `06_ttf_correlation` | Rolling 30/60/90d Pearson correlation: fill rate vs TTF M1 | NB 01, NB 07 | Correlation time series, scatter | 30 s |
+| 07 | `07_ttf_storage_analysis` | Integrated analysis: curve shape, W-S spread, regression, adequacy + **PDF export** | NB 01, Databento key | `gas_storage_ttf_report.pdf`, `ttf_curve.csv` | 3–5 min |
+| 08 | `08_time_spread_analysis` | Calendar spreads with real month labels (e.g. Oct'26–Apr'27) | NB 07 | Spread matrix, regime table, streak chart | 1 min |
+| 09 | `09_ttf_price_analysis` | Rolling vol, GARCH(1,1), price by fill bucket, seasonal avg, HMM regimes | NB 07, NB 01 | Vol chart, regime labels, violin table | 2 min |
+| 10 | `10_spread_deep_dive` | Roll yield, contango/backwardation streaks, seasonality, animated curve slider | NB 07, NB 01 | Roll yield series, streak table, animated chart | 1 min |
+| 11 | `11_lng_storage_analysis` | EU LNG fill rate, send-out, LNG vs gas fill dual chart, combined buffer | NB 01, ALSI key | `eu_lng_full.parquet` | 2–5 min |
 
-**Purpose:** Fetch EU and country-level gas storage data from AGSI+ and cache it locally.
-
-**Prerequisites:** AGSI API key configured.
-
-**Key outputs:**
-- `data/processed/eu_aggregate_full.parquet` — EU-wide daily storage data (run all other notebooks after this)
-- `data/cache/*.parquet` — per-country response cache (auto-managed, TTL 12h)
-
-**Configuration:**
-
-```python
-AGSI_API_KEY = "paste_key_here"   # in the notebook config cell
-START_DATE   = "2020-01-01"
-COUNTRIES    = ["DE","FR","IT","NL","AT","BE","ES","PL","CZ","HU"]
-```
-
-**Example output:**
-
-```
-✅ EU aggregate: 1826 rows | 2020-01-01 → 2025-01-01
-Latest fill: 72.3% (2025-01-01)
-```
+**Run order:** NB 01 must run first. NB 07 must run before NB 06, 08, 09, 10. NB 11 is independent.
 
 ---
 
-### Notebook 02 — EDA: Storage Levels
-
-**Purpose:** Exploratory analysis of storage fill rates across countries and time.
-
-**Prerequisites:** Notebook 01.
-
-**Key outputs:**
-- Year-over-year fill rate chart (5 years of history with bands)
-- Country-level heatmap
-- Injection/withdrawal flow chart
-
-**Configuration:** `ANALYSIS_DATE`, `START_DATE` at top of setup cell.
-
-**Example output description:** An interactive Plotly chart showing the current year's fill rate (solid line) overlaid on the 5-year min/max band (shaded), with a dashed line for the EU 90% target.
-
----
-
-### Notebook 03 — Seasonal Analysis
-
-**Purpose:** Decompose storage patterns into trend, seasonal and residual components using STL.
-
-**Prerequisites:** Notebook 01.
-
-**Key outputs:**
-- STL decomposition chart (4-panel: observed, trend, seasonal, residual)
-- Injection season summary table (by year: start fill, peak fill, end fill, net injection)
-- Year-over-year delta vs 5-year average
-
-**Configuration:**
-
-```python
-STL_PERIOD   = 365   # days (annual seasonality)
-STL_SEASONAL = 13    # smoother window (odd number, ≥7)
-```
-
----
-
-### Notebook 04 — Injection Pace Tracker
-
-**Purpose:** Compare the current injection pace against the rate needed to hit the EU's 90% fill target by November 1.
-
-**Prerequisites:** Notebook 01.
-
-**Key outputs:**
-- Required daily injection rate (GWh/day) to reach target
-- Achievability flag (True if within physical capacity of ~13,500 GWh/day)
-- Projection chart: current trajectory vs required trajectory
-
-**Configuration:**
-
-```python
-TARGET_FILL_PCT = 90.0     # EU regulatory target
-TARGET_DATE     = date(current_year, 11, 1)
-```
-
-**Example output:**
-
-```
-Current fill: 58.3% | Target: 90.0% | Days remaining: 147
-Required daily rate: 8,412 GWh/day
-Achievable: True (max capacity: 13,500 GWh/day)
-```
-
----
-
-### Notebook 05 — Winter Adequacy
-
-**Purpose:** Model storage depletion under 4 demand scenarios from November 1 through March 31.
-
-**Prerequisites:** Notebook 01.
-
-**Key outputs:**
-- Depletion curves for 4 scenarios: Mild (4,500 GWh/day withdrawal), Normal (6,000), Cold (7,500), Extreme (9,000)
-- Days-of-supply table per scenario
-- HDD sensitivity table (how end-of-winter storage changes with warmer/colder weather)
-
-**Configuration:**
-
-```python
-LNG_DAILY_GWH      = 400.0   # daily LNG regasification contribution
-PIPELINE_DAILY_GWH = 800.0   # daily pipeline import contribution
-```
-
----
-
-### Notebook 06 — TTF Correlation
-
-**Purpose:** Quantify the time-varying correlation between EU storage fill rate and TTF M1 price.
-
-**Prerequisites:** Notebooks 01 and 07 (for TTF data file).
-
-**Key outputs:**
-- Rolling 30/60/90-day correlation chart
-- Scatter plot: fill rate vs TTF M1
-- Linear regression: slope, R², p-value
-
----
-
-### Notebook 07 — TTF & Storage Analysis (Main Report)
-
-**Purpose:** Integrated analysis combining storage, forward curve, spread analysis, price modelling and a PDF export.
-
-**Prerequisites:** Notebooks 01 + TTF data fetched (cell 2 in this notebook fetches it).
-
-**Key outputs:**
-- `data/raw/ttf_curve.csv` — TTF forward curve CSV
-- `reports/eu_gas_analysis_YYYYMMDD.pdf` — PDF report
-
-**Configuration:**
-
-```python
-DATABENTO_API_KEY = "paste_key_here"
-ANALYSIS_DATE     = None          # None = last available date
-START_DATE        = "2020-01-01"
-```
-
-**Sections:**
-1. TTF Forward Curve shape (current vs historical)
-2. Winter-Summer spread with injection breakeven line
-3. Storage vs price regression
-4. Injection pace (current year vs 90% target path)
-5. Winter depletion scenarios
-6. Rolling correlation
-7. PDF export
-
----
-
-### Notebook 08 — Time Spread Analysis
-
-**Purpose:** Deep-dive into calendar spreads using real delivery month labels (e.g. *Jul'26–Oct'26*) rather than M+N offsets.
-
-**Prerequisites:** Notebook 07 (for `ttf_curve.csv`).
-
-**Key outputs:**
-- Spread matrix table (near month × far month, for latest date)
-- Summer–Winter spread time series
-- Spread vs fill rate chart with regime shading
-
----
-
-### Notebook 09 — TTF Price Analysis
-
-**Purpose:** Flat-price volatility, GARCH conditional volatility, price distribution by fill bucket, seasonality and HMM regime detection.
-
-**Prerequisites:** Notebook 07 (for `ttf_curve.csv`) and Notebook 01 (for storage parquet).
-
-**Key outputs:**
-- Rolling volatility chart (5d/21d/63d annualised, %)
-- GARCH(1,1) conditional volatility series
-- Violin plots: TTF M1 distribution split by fill-rate bucket
-- Seasonal bar chart (avg price by calendar month)
-- HMM regime scatter (Low / Medium / High price states)
-
-**Dependencies:** `arch` and `hmmlearn` (both in `requirements.txt`).
-
----
-
-### Notebook 10 — Spread Deep Dive
-
-**Purpose:** Roll yield, contango/backwardation streak analysis, spread seasonality and an animated forward curve slider.
-
-**Prerequisites:** Notebook 07 (for `ttf_curve.csv`) and Notebook 01 (for storage parquet).
-
-**Key outputs:**
-- Full M×M spread matrix heatmap (for the analysis date)
-- Annualised roll yield bar chart (green = backwardation, red = contango)
-- Regime timeline: contango/backwardation/flat coloured by period
-- Longest streak table
-- Animated forward curve with play/pause and date slider
-
----
-
-### Notebook 11 — LNG Storage Analysis
-
-**Purpose:** Fetch EU LNG terminal data, analyse send-out trends, correlate with TTF price, and build a combined gas + LNG energy buffer chart.
-
-**Prerequisites:** Notebook 01.
-
-**Key outputs:**
-- `data/processed/eu_lng_full.parquet`
-- LNG fill rate vs TTF M1 dual chart (with Pearson r)
-- Send-out rate time series with 30d rolling average
-- Dual fill chart: LNG fill % vs gas storage fill %
-- Combined energy buffer: gas + LNG (TWh)
-
-**Configuration (cell 0):**
-
-```python
-API_KEY = "paste_your_agsi_key_here"   # same key as notebook 01
-```
-
----
-
-## 4. Key Concepts
+## 5. Key Concepts
 
 ### Storage Fill Rate
-
-The fill rate measures how full European underground gas storage is relative to its working capacity.
-
-**Formula:**
 
 ```
 fill (%) = gasInStorage (TWh) / workingGasVolume (TWh) × 100
 ```
 
-**EU regulatory target:** EU member states must reach **90% fill by November 1** each year (Regulation 2022/1032). At 90%, the EU has roughly 950–1,000 TWh of usable gas reserves entering winter.
+The EU regulatory target is **90% fill by November 1** each year (EU Regulation 2022/1032). At 90%, the EU holds ~950–1,000 TWh of usable gas entering winter.
 
-**Key dates:**
-- **April 1** — start of injection season (storage typically at seasonal low)
-- **October 1** — late-season injection checkpoint
-- **November 1** — regulatory target date
-- **March 31** — end of withdrawal season (storage typically at seasonal low)
+| API column | Unit | Description |
+|---|---|---|
+| `gasInStorage` | TWh | Working gas currently in storage |
+| `workingGasVolume` | TWh | Total usable capacity |
+| `injection` | GWh/day | Gas injected (positive flow) |
+| `withdrawal` | GWh/day | Gas withdrawn (positive flow) |
+| `full` | % (0–100) | Fill rate — computed automatically if absent |
+
+**Unit conversion:** `injection` and `withdrawal` arrive in GWh/day; `gasInStorage` and `workingGasVolume` in TWh. To convert TWh → GWh multiply by 1,000.
 
 ---
 
 ### TTF Forward Curve
 
-TTF (Title Transfer Facility) is the primary European natural gas benchmark, traded at the Dutch virtual hub.
+TTF (Title Transfer Facility) is the primary European gas benchmark, traded at the Dutch virtual hub.
 
-**Month offsets:**
-- **M1** = front month (closest delivery contract, rolls ~3 days before expiry)
-- **M2** = next month
-- **M3–M12** = progressively farther delivery months
+| Label | Meaning |
+|---|---|
+| M1 | Front month (nearest delivery) |
+| M2 | Next month |
+| M3–M12 | Further delivery months |
+| Q2 | Calendar quarter (Apr–Jun) |
+| Summer | Q2 + Q3 (Apr–Sep) |
+| Winter | Q4 + Q1 next year (Oct–Mar) |
 
-**Quarters and seasons:**
-- **Q1** ≈ M1–M3 (winter, Jan–Mar)
-- **Q2** ≈ M4–M6 (spring/injection, Apr–Jun)
-- **Q3** ≈ M7–M9 (summer/peak injection, Jul–Sep)
-- **Q4** ≈ M10–M12 (autumn/winter onset, Oct–Dec)
-- **Summer** ≈ Q2+Q3 (Apr–Sep)
-- **Winter** ≈ Q4+Q1 next year (Oct–Mar)
-
-**Reading the curve:**
-- Upward slope (M1 < M2 < M3…) = **contango** — market expects prices to rise; storage owners earn a spread by buying now and selling forward
-- Downward slope (M1 > M2 > M3…) = **backwardation** — market expects prices to fall; current supply is tight
+The curve structure signals market expectations:
+- **Upward slope** (M1 < M2 < … < M12) → **contango** — future delivery priced higher; ample near-term supply
+- **Downward slope** (M1 > M2 > … > M12) → **backwardation** — near-term tighter than forward; winter scarcity priced
 
 ---
 
-### Time Spreads: Contango vs Backwardation
+### Contango vs Backwardation
 
-The most watched spread is **M1–M2** (or more broadly, **Winter–Summer**).
+The **M1–M2 spread** (or more broadly **Winter–Summer spread**) is the primary storage signal:
 
-| Regime | M1–M2 spread | What it signals |
-|---|---|---|
-| **Backwardation** | Positive (M1 > M2) | Current supply tight; immediate delivery priced at premium |
-| **Contango** | Negative (M1 < M2) | Ample current supply; forward prices higher (storage-friendly) |
-| **Flat** | ~0 (within ±€0.15/MWh) | Market indifferent between delivery periods |
+| Regime | M1 – M2 | Signal | Storage economics |
+|---|---|---|---|
+| Contango | Negative | Ample supply | Injection profitable (buy spot, sell forward) |
+| Flat | ~0 (±€0.15) | Balanced | Marginal injection economics |
+| Backwardation | Positive | Near-term tight | Injection uneconomic; holders incentivised to withdraw |
 
-**Injection breakeven:** For gas storage to be economically viable, the Winter–Summer spread (typically Q4/Q1 vs Q2/Q3) must exceed the **all-in cost of storage** (~€3–5/MWh for EU underground storage, covering operating costs, gas losses, and financing). A W–S spread below ~€5/MWh discourages commercial injection.
+**Injection breakeven:** The Winter–Summer spread must exceed ~**€5/MWh** to cover underground storage costs (operations, gas losses, financing). Below this level commercial injection slows.
 
-**Roll yield:**
-
+**Roll yield** (annualised):
 ```
-Roll yield (% annualised) = (M1 − M2) / M1 × (252 / holding_days) × 100
+roll_yield (%) = (M1 − M2) / M1 × (252 / holding_days) × 100
 ```
-
-Positive roll yield = backwardation = profit from being long M1 and rolling forward. Negative = contango = roll cost.
+Positive = backwardation = profit from holding front-month. Negative = contango = roll cost.
 
 ---
 
 ### Winter Adequacy Model
 
-The adequacy model (`src/analysis/adequacy.py`) simulates storage depletion from November 1 through March 31 under 4 demand scenarios:
+The model in `src/analysis/adequacy.py` runs depletion from November 1 to March 31 (151 days) across four demand scenarios:
 
-| Scenario | Net withdrawal | Description |
+| Scenario | Net withdrawal | Cold spell |
 |---|---|---|
-| Mild | 4,500 GWh/day | Unusually warm winter |
-| Normal | 6,000 GWh/day | Average historical demand |
-| Cold | 7,500 GWh/day | Cold spell included (14 days at 1.8× rate) |
-| Extreme | 9,000 GWh/day | 2021-style cold snap (21 days at 2.0× rate) |
+| Mild | 4,500 GWh/day | None |
+| Normal | 6,000 GWh/day | None |
+| Cold | 7,500 GWh/day | 14 days at 1.8× |
+| Extreme | 9,000 GWh/day | 21 days at 2.0× |
 
-**Supply offsets:** LNG regasification (~400 GWh/day) and pipeline imports (~800 GWh/day) are subtracted from gross withdrawal to arrive at net withdrawal from storage.
-
-**Injection scenarios:** The projection model uses P10/P50/P90 injection rates derived from historical AGSI data.
-
-**Depletion day:** If storage hits zero before March 31 under a given scenario, the model reports the day of depletion — the point at which the EU would face supply gaps without emergency measures.
+Daily supply offsets: ~400 GWh/day LNG regasification + ~800 GWh/day pipeline imports (configurable). Storage depletes when net withdrawal exceeds combined supply.
 
 ---
 
 ### Rolling Correlation
 
-The rolling Pearson correlation between storage fill rate and TTF M1 price is computed over windows of 30, 60, and 90 days.
+Pearson correlation between EU fill rate and TTF M1 price, computed over rolling windows:
 
-**Interpretation:**
-- **r < −0.7** — strong negative relationship: higher fill = significantly lower prices. This is the "normal" regime when storage is the primary price signal.
-- **−0.7 < r < −0.3** — moderate relationship: other factors (LNG imports, demand, geopolitics) are competing with storage as price drivers.
-- **r > −0.3 or positive** — storage fill has lost its explanatory power for prices. This typically occurs during supply disruptions or extreme geopolitical events where the forward curve decouples from fundamentals.
-
----
-
-## 5. Analysis Examples
-
-### Example 1 — Is the EU on track for winter?
-
-**Question:** Given today's fill rate and injection pace, will the EU reach the 90% target by November 1?
-
-**Steps:**
-
-1. Run notebook 01 to get current fill data:
-   ```bash
-   jupyter nbconvert --to notebook --execute notebooks/01_data_ingestion.ipynb
-   ```
-
-2. Open notebook 04. Check the output table:
-   ```
-   Current fill: 62.1% | Target: 90.0% | Days remaining: 120
-   Required daily rate: 9,280 GWh/day
-   Achievable: True (physical max: 13,500 GWh/day)
-   ```
-
-3. If `Achievable: False`, the EU cannot physically reach 90% — look at what fill is achievable at max injection rate.
-
-4. Cross-check in notebook 07, Section 4: the injection trajectory chart shows the current year's path vs the required path vs historical years that achieved 90%.
-
-**Verdict:** If current pace ≥ required rate AND fill rate is above the 5-year average for this date, the EU is on track.
+| Correlation | Interpretation |
+|---|---|
+| r < −0.7 | Storage is the dominant price driver — normal regime |
+| −0.7 to −0.3 | Moderate influence; LNG / geopolitics competing |
+| r > −0.3 | Storage has lost explanatory power (supply shock, disruption) |
 
 ---
 
-### Example 2 — Is the forward curve pricing winter scarcity?
+### LNG Columns (ALSI+)
 
-**Question:** Are forward prices signalling that the market expects winter gas to be scarce?
-
-**Steps:**
-
-1. Open notebook 07, Section 2 (Winter–Summer Spread).
-
-2. Read the current W–S spread (Q4 vs Q3, or Oct/Nov vs Jun/Jul):
-   - **W–S > €10/MWh** → market pricing significant winter risk
-   - **W–S €5–10/MWh** → normal winter premium, storage injection economical
-   - **W–S < €5/MWh** → market not concerned about winter; injection economics weak
-   - **W–S < 0** → backwardation; market expects gas to be more valuable now than in winter
-
-3. Cross-check with the curve shape chart: a steep upward curve with a pronounced Q4 hump relative to Q2 confirms winter scarcity pricing.
-
-4. In notebook 10, Section 2, the animated curve slider lets you compare today's curve shape against historical dates (e.g. the Sep 2021 stress period).
+| Column | Unit | Description |
+|---|---|---|
+| `gasInStorage` | TWh | LNG in terminal tanks |
+| `dtmi` | TWh | Declared total maximum inventory (capacity) |
+| `sendOut` | GWh/day | Regasified gas sent to the grid |
+| `full` | % | Fill rate = gasInStorage / dtmi × 100 |
 
 ---
 
-### Example 3 — What does low storage mean for TTF prices?
+## 6. Example Outputs
 
-**Question:** At what storage fill rate does TTF price behaviour change most sharply?
-
-**Steps:**
-
-1. Open notebook 08, Section 3 (Storage–Price Regression).
-
-2. Look at the regression chart: the storage–price relationship is typically non-linear (log-linear). The steepest part of the curve (where a 1pp drop in fill causes the largest price spike) is the **inflection point**.
-
-3. Read the regression output:
-   ```
-   A 1pp increase in fill = 2.4% decrease in TTF (R² = 0.61)
-   Inflection zone: 55–65% fill (estimated)
-   ```
-
-4. Compare the current fill rate against the inflection zone. If fill is **below** the inflection zone, price sensitivity is heightened — small changes in storage news will have amplified price impact.
-
-5. Check the rolling correlation in notebook 06: correlation becomes strongly negative (< −0.7) when fill enters the inflection zone.
-
----
-
-### Example 4 — Generate the weekly report
-
-**Question:** How do I produce a PDF snapshot of the current gas market situation?
-
-**Steps:**
-
-1. Ensure data is current:
-   ```bash
-   # In terminal
-   jupyter nbconvert --to notebook --execute notebooks/01_data_ingestion.ipynb
-   ```
-
-2. Open notebook 07 in JupyterLab.
-
-3. In the setup cell, verify:
-   ```python
-   ANALYSIS_DATE = None    # auto-selects latest date
-   START_DATE    = "2020-01-01"
-   ```
-
-4. Run all cells: **Kernel → Restart & Run All**
-
-5. Scroll to Section 7 (Export). Run the PDF export cell. The report is saved to:
-   ```
-   reports/eu_gas_analysis_YYYYMMDD.pdf
-   ```
-
-6. The PDF includes: current fill rate, injection pace chart, forward curve, W–S spread, depletion scenarios, and a one-page summary table.
-
----
-
-## 6. Troubleshooting
-
-### SSL certificate errors
+### Notebook 01 — Data Ingestion
 
 ```
-requests.exceptions.SSLError: [SSL: CERTIFICATE_VERIFY_FAILED]
+✅ Root: /home/user/eu-gas-storage-analysis
+Fetching EU aggregate...
+  DE: 1826 rows | 2020-01-01 → 2025-11-14
+  FR: 1826 rows | 2020-01-01 → 2025-11-14
+  ...
+✅ Storage: 1826 rows | 2020-01-01 → 2025-11-14
+   Analysis date  : 2025-11-14
+   Fill rate      : 72.4%
+   Storage        : 928.1 TWh
+   Capacity       : 1082.6 TWh
 ```
 
-**Fix:** All API clients default to `ssl_verify=False`. If you see this, check you are using the client classes from `src/agsi_client/` and not calling `requests` directly with verify=True.
+### Notebook 07 — Integrated Analysis
+
+```
+✅ Root: /home/user/eu-gas-storage-analysis
+✅ Storage: 1826 rows | latest: 2025-11-14 | fill: 72.4%
+✅ TTF curve loaded: 1512 rows | 2020-01-01 → 2025-11-14
+   M1: €38.42/MWh  M3: €41.18/MWh  M6: €44.91/MWh  M12: €46.23/MWh
+   Winter–Summer spread: +€6.49/MWh (contango)
+
+OLS: log(TTF M1) ~ α + β × fill%
+  α = 5.8241  β = -0.0243  R² = 0.614
+  A 1pp increase in fill = 2.43% decrease in TTF (R²=0.61)
+
+Injection scenarios: Low=6,240 / Avg=8,810 / High=11,380 GWh/day
+  Low  → Nov 1: 79.3%  ⚠️ -10.7pp vs target
+  Avg  → Nov 1: 89.6%  ✅  -0.4pp vs target
+  High → Nov 1: 97.2%  ✅  +7.2pp vs target
+
+✅ 9 charts saved
+✅ Report: data/processed/gas_storage_ttf_report.pdf
+   Size  : 847 KB
+```
+
+### Notebook 08 — Time Spread Analysis
+
+```
+Analysis date: 2025-11-14
+TTF rows: 1512  |  Storage rows: 1826
+
+Spread matrix: 66 column pairs built
+Latest M1–M2 spread: -€2.77/MWh (contango)
+Latest M1–M12 spread: -€7.81/MWh
+
+Longest streaks:
+  start       end         regime        days
+  2021-09-14  2022-06-28  backwardation  287
+  2022-07-01  2023-04-11  backwardation  284
+  2020-01-01  2021-09-13  contango       621
+```
+
+### Notebook 09 — TTF Price Volatility
+
+```
+Analysis date: 2025-11-14
+TTF rows: 1512, Storage rows: 1826
+
+Latest vol_21d: 34.7%   vol_63d: 28.3%
+GARCH(1,1) fitted on 1511 log-returns.
+Latest GARCH cond. vol: 31.2% (annualised)
+
+regime_label
+Low       412
+Medium    680
+High      420
+Name: count, dtype: int64
+
+Price distribution by fill bucket:
+        bucket_label  count   mean  median    p10    p90
+  0    20–36%     87   89.4    84.1   44.2  148.3
+  1    36–52%    210   72.1    68.4   32.8  121.6
+  2    52–68%    531   42.7    38.9   24.1   74.2
+  3    68–84%    512   31.8    29.4   19.6   52.7
+  4    84–100%   172   27.3    25.8   17.4   43.1
+```
+
+### Notebook 11 — LNG Storage
+
+```
+✅ Root: /home/user/eu-gas-storage-analysis
+Setup complete. Run cell 1 to fetch LNG data.
+
+✅ Saved 1681 rows → data/processed/eu_lng_full.parquet
+Latest (2025-11-14):
+  gasInStorage  sendOut     dtmi  full
+        7.21    312.4      8.24  87.5%
+
+Analysis date: 2025-11-14
+Latest LNG fill: 87.5%
+1-year avg send-out: 287 GWh/day
+
+Correlation (gas fill vs LNG fill): 0.341
+```
+
+### PDF Report Cover
+
+```
+╔═══════════════════════════════════════════════════════════╗
+║  [NAVY BACKGROUND — full-width banner]                    ║
+║                                                           ║
+║         EU Gas Storage & TTF                              ║
+║         Market Analysis Report                            ║
+║                                                           ║
+║    As of 14 November 2025  ·  EU Fill Rate: 72.4%         ║
+║                                                           ║
+║  ─────────────────────────────                            ║
+║  Includes: Storage · TTF Curve · Spreads · Volatility · LNG ║
+║  Generated 2025-11-14                                     ║
+╚═══════════════════════════════════════════════════════════╝
+```
+
+---
+
+## 7. Workflows
+
+### Workflow 1 — Weekly Market Brief (10 min)
+
+Generate the full analysis PDF for a Monday morning briefing.
+
+```
+1. Pull latest data:
+   > Open 01_data_ingestion.ipynb
+   > Kernel → Restart & Run All
+   > Confirm: "✅ Storage: N rows | latest: YYYY-MM-DD"
+
+2. Generate report:
+   > Open 07_ttf_storage_analysis.ipynb
+   > Kernel → Restart & Run All
+   > Confirm: "✅ Report: data/processed/gas_storage_ttf_report.pdf"
+
+3. Download PDF:
+   > Scroll to last cell → click "📄 Download" link
+   OR
+   > Open data/processed/gas_storage_ttf_report.pdf in JupyterLab file browser
+```
+
+**Output:** 8-section PDF covering storage snapshot, TTF curve, W-S spread, correlation, injection pace, winter adequacy, time spreads, volatility, and LNG.
+
+---
+
+### Workflow 2 — Winter Adequacy Tracking (5 min)
+
+Monitor whether the EU is on track for the 90% November 1 target.
+
+```
+1. Run NB 01 (data fetch)
+
+2. Open 04_injection_pace_tracker.ipynb → Run All
+   > Read: "Required daily rate: X GWh/day | Achievable: True/False"
+   > If False: physically impossible to reach 90% — model max-injection scenario
+
+3. Open 05_winter_adequacy.ipynb → Run All
+   > Read the depletion table:
+     - If "storage_depleted: True" for Normal scenario → high stress alert
+     - If only Extreme scenario depletes → acceptable risk
+
+4. Cross-check in NB 07, Section 4 (Injection chart):
+   > Current year path vs 90% target trajectory
+```
+
+**Trigger:** Run this workflow weekly Apr–Oct; daily if fill rate drops >2pp in a week.
+
+---
+
+### Workflow 3 — Spread & Roll Yield Analysis (10 min)
+
+Analyse TTF calendar spread structure for a trading desk.
+
+```
+1. Run NB 07 (required — fetches TTF curve)
+
+2. Open 08_time_spread_analysis.ipynb → Run All
+   > Section 1: W-S spread with real month labels (e.g. Oct'26 – Apr'27)
+   > Section 3: Read current regime (contango / backwardation / flat)
+   > Note longest ongoing streak length
+
+3. Open 10_spread_deep_dive.ipynb → Run All
+   > Section 2: Roll yield chart — positive = backwardation premium
+   > Section 4: Spread seasonality — which calendar months historically
+                 show widest/narrowest spreads
+   > Section 5: Animated curve slider — scrub back to compare curve shape
+                 at previous stress dates (e.g. Sep 2021, Aug 2022)
+
+4. Check PDF Section 6 for spread vs fill quintile table
+```
+
+**Key metric:** If M1–M6 spread > €8/MWh → the market is pricing significant winter risk.
+
+---
+
+### Workflow 4 — Historical Curve Comparison (5 min)
+
+Compare today's forward curve against a historical stress date.
+
+```
+1. Open 10_spread_deep_dive.ipynb
+
+2. Run all cells — go to Section 5 (Animated Forward Curve)
+
+3. Click ▶ Play or drag the slider to the comparison date
+   (e.g. 2022-08-26 — TTF M1 peak above €300/MWh)
+
+4. Alternatively, in NB 07 Section 6 (Interactive Curve Tool):
+   CURVE_DATE = date(2022, 8, 26)   # set this in the cell
+   Run the cell → see historical curve vs today's shape
+```
+
+**Use case:** Quickly brief counterparties or management on "how today compares to [crisis date]."
+
+---
+
+### Workflow 5 — Incremental Data Update (3 min)
+
+Update only new data since the last run without refetching history.
 
 ```python
-client = AGSIClient(api_key="...", ssl_verify=False)   # default — already set
+# In a notebook or script:
+from src.agsi_client.client import AGSIClient
+from src.agsi_client.databento_client import DatabentoTTFClient
+
+# Storage — client caches with 12h TTL; just re-run NB 01
+# (cache handles deduplication automatically)
+
+# TTF curve — incremental fetch since last CSV date
+ttf_client = DatabentoTTFClient(api_key="your_key")
+df = ttf_client.update_ttf_csv("data/raw/ttf_curve.csv", n_months=12)
+# Logs: "Last date: 2025-11-07 | Fetching from 2025-11-08"
+# Logs: "+5 new rows"
+# Logs: "✅ Saved 1517 rows → data/raw/ttf_curve.csv"
 ```
+
+**Schedule:** Run `update_ttf_csv` daily after ~18:00 CET (ICE settlement time).
 
 ---
 
-### `ModuleNotFoundError: No module named 'src'`
+## 8. Data Files
 
-```
-ModuleNotFoundError: No module named 'src'
-```
+| Filename | Location | Created by | Contents | ~Rows |
+|---|---|---|---|---|
+| `eu_aggregate_full.parquet` | `data/processed/` | NB 01 | EU-wide daily: gasInStorage, injection, withdrawal, workingGasVolume, full | 1,500–2,000 |
+| `eu_lng_full.parquet` | `data/processed/` | NB 11 | EU LNG daily: gasInStorage, sendOut, dtmi, full | 1,500–2,000 |
+| `ttf_curve.csv` | `data/raw/` | NB 07 | TTF forward curve: columns M1–M12, daily settlement (€/MWh) | 1,500–2,000 |
+| `gas_storage_ttf_report.pdf` | `data/processed/` | NB 07 | 8-section PDF report | — |
+| `*.parquet` (cache) | `data/cache/` | Auto (AGSIClient) | Per-request API response cache, 12h TTL | — |
+| `*.parquet` (cache) | `data/cache/alsi/` | Auto (ALSIClient) | Per-request ALSI API cache, 12h TTL | — |
 
-**Cause:** The notebook was opened from the wrong directory, so Python cannot find the `src/` package.
-
-**Fix:** Every notebook contains a path-fix cell at the top:
+**Parquet files** use PyArrow and are indexed by date. Load with:
 
 ```python
-for _c in [Path.cwd(), Path.cwd().parent, Path.cwd().parent.parent]:
-    if (_c / 'src' / 'agsi_client').exists():
-        sys.path.insert(0, str(_c)); os.chdir(_c)
-        print(f"✅ Root: {_c}"); break
-```
-
-Run this cell first. If it prints `✅ Root: /path/to/eu-gas-storage-analysis`, imports will work.
-
----
-
-### API returns only 300 rows (pagination)
-
-**Cause:** The AGSI and ALSI APIs paginate responses at 300 rows per page.
-
-**Fix:** The `AGSIClient` and `ALSIClient` handle pagination automatically — they iterate pages until a response contains fewer than 300 rows. You do not need to do anything. If you see truncated data, check the API key is valid and the `from`/`to` date parameters are correctly formatted as `"YYYY-MM-DD"`.
-
----
-
-### Databento prices in billions
-
-```
-M1    1234567890.0
-M2    1189000000.0
-```
-
-**Cause:** Databento uses a fixed-point price encoding (price × 1,000,000,000 for integer storage).
-
-**Fix:** The `DatabentoTTFClient._build_curve` method automatically detects when the mean price exceeds 1,000,000 and divides by 1e9. If you load a raw Databento file manually and see billion-scale prices, divide the price columns by 1e9:
-
-```python
-for col in df.columns:
-    if df[col].mean() > 1_000_000:
-        df[col] = df[col] / 1e9
+import pandas as pd
+df = pd.read_parquet("data/processed/eu_aggregate_full.parquet")
+df.index = pd.to_datetime(df.index).tz_localize(None)
 ```
 
 ---
 
-### `reversed() argument must be a sequence` (Python 3.14+)
+## 9. Troubleshooting
 
-**Cause:** Python 3.14 tightened the `reversed()` protocol. Some older Plotly/matplotlib code passes a generator.
-
-**Fix:** Already addressed in `src/visualization/plots.py` using `[::-1]` slice notation instead of `reversed()`. If you encounter this in a notebook cell directly, replace:
-
-```python
-# Old (breaks on Python 3.14)
-list(reversed(some_list))
-
-# New (works everywhere)
-some_list[::-1]
-```
-
----
-
-### GARCH or HMM `ImportError`
-
-```
-ImportError: Install arch: pip install arch
-ImportError: Install hmmlearn: pip install hmmlearn
-```
-
-**Fix:**
-
-```bash
-pip install arch hmmlearn
-```
-
-Both packages are listed in `requirements.txt` and installed by `pip install -r requirements.txt`. If you skipped that step or are using a different environment, install them manually.
+| Error | Cause | Fix |
+|---|---|---|
+| `TypeError: Cannot join tz-naive and tz-aware DatetimeIndex` | Some DataFrames carry UTC timezone from API; others are tz-naive | Add `.tz_localize(None)` after `pd.to_datetime()`: `df.index = pd.to_datetime(df.index).tz_localize(None)` |
+| `ModuleNotFoundError: No module named 'src'` | Notebook opened from wrong directory; Python path doesn't include project root | Run the path-fix cell at the top of every notebook first: `for _c in [Path.cwd(), ...]: if (_c / 'src' / 'agsi_client').exists(): sys.path.insert(0, str(_c)); os.chdir(_c); break` |
+| `reversed() argument must be a sequence` (Python 3.14+) | Python 3.14 tightened `reversed()` protocol; some Plotly internals affected | Replace `reversed(x)` with `x[::-1]` in any custom code; the `src/visualization/plots.py` module already uses slice notation |
+| ALSI `sendOut` / `dtmi` columns missing or NaN | Not all LNG terminals report all fields to GIE | `ALSIClient._parse()` uses `pd.to_numeric(..., errors="coerce")` — missing columns become NaN; guard with `lat.get('sendOut', float('nan'))` |
+| Only 300 rows returned from AGSI/ALSI | API paginates at 300 rows per page | `AGSIClient` and `ALSIClient` handle pagination automatically (loop until `len(page) < 300`). If data is truncated, verify your API key is valid — invalid keys often return a single empty page |
+| `FileNotFoundError: data/processed/eu_aggregate_full.parquet` | Notebook 01 has not been run yet | Run `01_data_ingestion.ipynb` first (Kernel → Restart & Run All) |
+| `FileNotFoundError: data/raw/ttf_curve.csv` | Notebook 07 cell 2 (Databento fetch) has not been run | Open NB 07, run cell 2 with a valid `DATABENTO_API_KEY` |
+| `ImportError: No module named 'arch'` | Optional GARCH dependency not installed | `pip install arch` (already in `requirements.txt` — re-run `pip install -r requirements.txt`) |
+| `ImportError: No module named 'hmmlearn'` | Optional HMM dependency not installed | `pip install hmmlearn` (already in `requirements.txt`) |
+| Charts blank / kaleido error in PDF export | `kaleido` not installed or wrong version | `pip install kaleido` — must match Plotly version. On some systems: `pip install kaleido==0.2.1` |
+| Cache returning stale data | 12h TTL not yet expired | Pass `use_cache=False` to any client method, or call `client.clear_cache()` to delete all parquet cache files |
 
 ---
 
-### Parquet file not found
-
-```
-FileNotFoundError: data/processed/eu_aggregate_full.parquet
-```
-
-**Fix:** Run notebook 01 first. It creates all the processed parquet files. If you are running from a CI or script context:
-
-```bash
-jupyter nbconvert --to notebook --execute notebooks/01_data_ingestion.ipynb --output notebooks/01_data_ingestion.ipynb
-```
-
----
-
-### Cache returning stale data
-
-**Cause:** API responses are cached in `data/cache/` with a 12-hour TTL.
-
-**Fix:** To force a fresh fetch, either:
-
-```python
-# Option A: pass use_cache=False
-df = client.get_eu_aggregate(start="2020-01-01", use_cache=False)
-
-# Option B: clear all cache files
-client.clear_cache()
-```
-
-Or delete `data/cache/*.parquet` manually.
+*EU Gas Storage Analysis · github.com/maziez11-lgtm/eu-gas-storage-analysis*
