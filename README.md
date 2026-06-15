@@ -55,6 +55,7 @@ jupyter lab notebooks/07_ttf_storage_analysis.ipynb
 | 09 | `09_ttf_price_analysis` | Flat price volatility, GARCH, price distribution by fill bucket, HMM regimes | Vol charts, regime labels |
 | 10 | `10_spread_deep_dive` | Roll yield, contango/backwardation streaks, seasonality, animated curve | Roll yield series, streak table |
 | 11 | `11_lng_storage_analysis` | LNG fill rate, send-out trends, LNG + gas combined energy buffer | `data/processed/eu_lng_full.parquet` |
+| 12 | `12_ttf_market_analysis` | Vol surface, curve shape, seasonal carry, roll yield, VaR, drawdown | Interactive charts, risk metrics table |
 
 **Run order:** 01 must run first. Notebooks 02–06 are independent of each other. Notebooks 07–11 require 01.
 
