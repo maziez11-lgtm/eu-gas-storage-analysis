@@ -20,6 +20,7 @@ Open notebooks/01_data_ingestion.ipynb first.
 - src/analysis/correlations.py — TTF correlation
 
 ## Notebooks
+0. 00_fetch_ttf_databento — fetch/regenerate data/raw/ttf_curve.csv from Databento
 1. 01_data_ingestion — fetch + cache AGSI data (run first)
 2. 02_eda — exploratory analysis
 3. 03_seasonal — seasonal patterns
