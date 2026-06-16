@@ -17,3 +17,4 @@ ipywidgets>=8.1.0
 reportlab>=4.0.0
 arch>=5.3.0
 hmmlearn>=0.3.0
+# blpapi  # Bloomberg Python SDK — requires Bloomberg Terminal (pip install blpapi)
