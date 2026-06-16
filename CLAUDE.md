@@ -28,6 +28,21 @@ Open notebooks/01_data_ingestion.ipynb first.
 6. 06_ttf_correlation — TTF vs storage
 7. 07_ttf_storage_analysis — integrated analysis + PDF export
 
+## Bloomberg Terminal Integration
+- src/agsi_client/bloomberg_client.py — Bloomberg Professional API (blpapi) wrapper
+- notebooks/13_bloomberg_data.ipynb — TTF curve, historical data, multi-asset panel
+
+Two TTF data sources are supported:
+  1. Databento (databento_client.py) — cloud API, requires DATABENTO_API_KEY
+  2. Bloomberg Terminal (bloomberg_client.py) — local session, requires blpapi + open Terminal
+
+Bloomberg TTF tickers: TGE1 Comdty (M1) … TGE24 Comdty (M24), TTFDA Comdty (day-ahead)
+Bloomberg output files:
+  - data/raw/ttf_curve_bbg.csv — Bloomberg-sourced curve (always preserved)
+  - data/raw/ttf_curve.csv     — active curve (replaced by BBG when Terminal available)
+
+Install: pip install blpapi  (commented out in requirements.txt — Bloomberg SDK only)
+
 ## Units
 - gasInStorage, workingGasVolume: TWh
 - injection, withdrawal: GWh/day
