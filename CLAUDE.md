@@ -28,7 +28,21 @@ Open notebooks/01_data_ingestion.ipynb first.
 6. 06_ttf_correlation — TTF vs storage
 7. 07_ttf_storage_analysis — integrated analysis + PDF export
 
-## Bloomberg Terminal Integration
+## Data Refresh
+
+### TTF Forward Curve (data/raw/ttf_curve.csv)
+```bash
+python scripts/fetch_ttf_curve.py --api-key <DATABENTO_API_KEY>
+```
+Fetches M1–M24 daily settlement prices from Databento NDEX.IMPACT (ICE Endex TTF).
+Requires `hist.databento.com` to be reachable (add to network egress allowlist if needed).
+
+Script: `scripts/fetch_ttf_curve.py` — two-step approach:
+  1. Definitions (one day/year, 2019–2026) → instrument_id → expiration map
+  2. ohlcv-1d for all IDs → build curve with corrected delivery-month mapping
+     (ICE TTF expires month before delivery: delivery_month = expiry_month + 1)
+
+### Bloomberg Terminal Integration
 - src/agsi_client/bloomberg_client.py — Bloomberg Professional API (blpapi) wrapper
 - notebooks/13_bloomberg_data.ipynb — TTF curve, historical data, multi-asset panel
 

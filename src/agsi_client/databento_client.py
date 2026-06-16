@@ -114,6 +114,14 @@ class DatabentoTTFClient:
         -------
         pd.DataFrame
             Index: date (daily). Columns: M1, M2, ..., M{n_months} (€/MWh)
+
+        Notes
+        -----
+        ICE Endex TTF contracts expire ~2 business days BEFORE the start of
+        the delivery month (e.g. the July 2026 contract expires ~June 29).
+        M1 is therefore the contract delivering in trade_month + 1, M2 in
+        trade_month + 2, etc.  _build_curve computes tenor slots from the
+        *delivery* month (expiry_month + 1), not the expiry month.
         """
         end = end or date.today().strftime("%Y-%m-%d")
         parent = self.NDEX_TTF_PARENT if "NDEX" in self.dataset else self.XEEE_TTF_PARENT
@@ -196,12 +204,24 @@ class DatabentoTTFClient:
 
             if expiry_col and "expiry_date" in df_raw.columns:
                 expiry = row["expiry_date"]
-                # Month offset = how many months ahead the expiry is
                 d_ts = pd.Timestamp(d)
                 e_ts = pd.Timestamp(expiry)
-                months_ahead = (e_ts.year - d_ts.year) * 12 + (e_ts.month - d_ts.month)
+                # ICE Endex TTF contracts expire ~2 business days BEFORE the start
+                # of the delivery month (e.g. July delivery expires ~June 29).
+                # Delivery month = expiry month + 1, so M1 = next calendar month.
+                # Using expiry month directly would place two contracts in M1:
+                #   July delivery (expiry June) → raw offset 0 → clamped to M1
+                #   August delivery (expiry July) → raw offset 1 → also M1
+                # which corrupts every tenor via groupby mean blending.
+                if e_ts.month == 12:
+                    delivery_month = 1
+                    delivery_year  = e_ts.year + 1
+                else:
+                    delivery_month = e_ts.month + 1
+                    delivery_year  = e_ts.year
+                months_ahead = (delivery_year - d_ts.year) * 12 + (delivery_month - d_ts.month)
                 if months_ahead < 1:
-                    months_ahead = 1
+                    continue   # skip expired / current-month contracts
                 if months_ahead > n_months:
                     continue
                 rows.append({"date": d, f"M{months_ahead}": price})
