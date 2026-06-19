@@ -15,8 +15,8 @@ import pandas as pd
 
 
 # ── Seasonal definitions ──────────────────────────────────────────────────────
-INJECTION_MONTHS  = list(range(4, 11))   # Apr–Oct inclusive
-WITHDRAWAL_MONTHS = [11, 12, 1, 2, 3]   # Nov–Mar
+INJECTION_MONTHS  = list(range(4, 10))      # Apr–Sep inclusive
+WITHDRAWAL_MONTHS = [10, 11, 12, 1, 2, 3]  # Oct–Mar
 
 
 def required_daily_rate(

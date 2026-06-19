@@ -35,7 +35,7 @@ def compute_pace_vs_history(df, metric="full", target_pct=EU_TARGET_PCT, target_
     for year in range(current_year-n_years, current_year+1):
         year_df = df[df["year"]==year]
         if year_df.empty: continue
-        season = year_df[(year_df["doy"]>=91)&(year_df["doy"]<=304)]
+        season = year_df[(year_df["doy"]>=91)&(year_df["doy"]<=273)]
         for _, row in season.iterrows():
             rows.append({"year":year,"doy":row["doy"],"date":row.name,"fill_pct":row[metric]})
     pace_df = pd.DataFrame(rows)

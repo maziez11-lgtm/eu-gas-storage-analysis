@@ -44,7 +44,7 @@ def stl_decomposition(df, metric="full", period=365, seasonal=13):
 
 def label_season(date_index):
     months = date_index.month
-    season = np.where(months.isin(range(4,11)), "injection", "withdrawal")
+    season = np.where(months.isin(range(4,10)), "injection", "withdrawal")
     return pd.Series(season, index=date_index, name="season")
 
 def injection_season_summary(df):
